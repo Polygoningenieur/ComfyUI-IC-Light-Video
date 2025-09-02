@@ -5,11 +5,15 @@ import os
 import types
 import numpy as np
 import torch.nn.functional as F
+from typing import Any
 from comfy.utils import load_torch_file
+from nodes import VAEEncode
 from .utils.convert_unet import convert_iclight_unet
 from .utils.image import generate_gradient_image, LightPosition
+from .utils.utils import imageOrLatent
 from nodes import MAX_RESOLUTION
 import model_management
+import logging
 
 
 class ICLightVideo:
@@ -17,31 +21,67 @@ class ICLightVideo:
     def INPUT_TYPES(s):
         return {
             "required": {
+                "vae": ("VAE",),
+                "images": (imageOrLatent,),
+            },
+            "optional": {
                 "positive": ("CONDITIONING",),
                 "negative": ("CONDITIONING",),
-                "vae": ("VAE",),
-                "foreground": ("LATENT",),
+                "model": ("MODEL",),
+                "model_path": (folder_paths.get_filename_list("unet"),),
                 "multiplier": (
                     "FLOAT",
                     {"default": 0.18215, "min": 0.0, "max": 1.0, "step": 0.001},
                 ),
             },
-            "optional": {
-                "opt_background": ("LATENT",),
-            },
         }
 
-    RETURN_TYPES = ("CONDITIONING", "CONDITIONING", "LATENT")
-    RETURN_NAMES = ("positive", "negative", "empty_latent")
-    FUNCTION = "encode"
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("images",)
+    # INPUT_IS_LIST = True
+    # OUTPUT_IS_LIST = (True,)
+    FUNCTION = "main"
     CATEGORY = "IC-Light"
-    DESCRIPTION = """
-  
-Conditioning for the IC-Light model.  
-To use the "opt_background" input, you also need to use the  
-"fbc" version of the IC-Light models.  
-  
-"""
+    DESCRIPTION = """..."""
+
+    def main(
+        self,
+        vae,
+        images,  # torch.Tensor
+        positive=None,
+        negative=None,
+        model=None,
+        model_path=None,
+        multiplier=0.18215,
+    ):
+        """..."""
+
+        logging.info("------------------")
+        logging.info("| IC-Light VIDEO |")
+        logging.info("------------------")
+
+        logging.info(f"{len(images)} Images - {images.shape}")
+
+        # ({"samples": tensor})
+        try:
+            encoded: tuple[dict[str, Any]] = VAEEncode.encode(self, vae, images)
+        except Exception as e:
+            logging.error(f"Error encoding images: {e}")
+            return ([], )
+        logging.info(f"Encoded images.")
+        
+        # samples is a tensor
+        samples_tensor: Any = encoded[0].get("samples", None)
+        if samples_tensor is None or samples_tensor.numel() == 0:
+            logging.error(f"Could not get samples from encoded images.")
+            return ([], )
+        logging.info(f"Image Samples: {samples_tensor.shape}")
+
+        for index, tensor in enumerate(samples_tensor):
+            # each image is a tensor
+            logging.info(f"Image {index}: {type(tensor)}")
+
+        return (images,)
 
 
 class LoadAndApplyICLightUnet:
