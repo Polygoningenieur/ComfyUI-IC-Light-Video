@@ -11,7 +11,6 @@ from nodes import VAEEncode, VAEDecode
 from comfy_extras.nodes_custom_sampler import SamplerCustom
 from .utils.convert_unet import convert_iclight_unet
 from .utils.image import generate_gradient_image, LightPosition
-from .utils.utils import imageOrLatent
 from nodes import MAX_RESOLUTION
 import model_management
 import logging
@@ -22,7 +21,7 @@ class ICLightVideo:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "images": (imageOrLatent, {"tooltip": "Multiple Images"}),
+                "images": ("IMAGE", {"tooltip": "Multiple Images"}),
                 "model": ("MODEL", {"tooltip": "IC-Light model"}),
                 "positive": ("CONDITIONING",),
                 "negative": ("CONDITIONING",),
@@ -38,6 +37,33 @@ class ICLightVideo:
                     },
                 ),
                 "opt_background": ("LATENT",),
+                "start": (
+                    "INT",
+                    {
+                        "default": 1,
+                        "min": 1,
+                        "max": 0xFFFFFFFFFFFFFFFF,
+                        "tooltip": "Frame to start at.",
+                    },
+                ),
+                "stop": (
+                    "INT",
+                    {
+                        "default": 0,
+                        "min": 0,
+                        "max": 0xFFFFFFFFFFFFFFFF,
+                        "tooltip": "Frame to stop at.\nLeave at 0 to use all frames.",
+                    },
+                ),
+                "step": (
+                    "INT",
+                    {
+                        "default": 1,
+                        "min": 1,
+                        "max": 0xFFFFFFFFFFFFFFFF,
+                        "tooltip": "How much frames to step over each iteration.",
+                    },
+                ),
                 "multiplier": (
                     "FLOAT",
                     {
@@ -78,7 +104,7 @@ class ICLightVideo:
     # OUTPUT_IS_LIST = (True,)
     FUNCTION = "main"
     CATEGORY = "IC-Light"
-    DESCRIPTION = """Applies IC-Light to each images of images input. Encodes, conditions, samples and decodes them.\nPlug in a latent image for the sampler, otherwise an empty latent is used."""
+    DESCRIPTION = """Applies IC-Light to each images of images input. Encodes, conditions, samples and decodes them.\n\nPlug in a latent image for the sampler, otherwise an empty latent is used.\n\nVersion: 0.0.8"""
 
     def main(
         self,
@@ -91,6 +117,9 @@ class ICLightVideo:
         sigmas,
         latent_image=None,
         opt_background=None,
+        start: int = 1,
+        stop: int = 0,
+        step: int = 1,
         multiplier=0.18215,
         noise_seed=0,
         cfg=8.0,
@@ -100,6 +129,27 @@ class ICLightVideo:
         logging.info("------------------")
         logging.info("| IC-Light VIDEO |")
         logging.info("------------------")
+
+        # cut and slice images to provided start, stop and step
+        total = (
+            int(images.shape[0]) if hasattr(images, "shape") and images.ndim >= 1 else 0
+        )
+        if total == 0:
+            return ([],)
+
+        start = max(1, int(start))
+        step = max(1, int(step))
+
+        # stop: 0 => use full length; otherwise inclusive index
+        if stop <= 0 or stop >= total:
+            stop = total
+        else:
+            stop = min(int(stop) + 1, total)  # inclusive
+
+        if start >= total:
+            return ([],)
+        
+        images = images[start:stop:step].contiguous()
 
         # * ENCODE
         try:
