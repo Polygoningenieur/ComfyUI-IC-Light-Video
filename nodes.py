@@ -22,19 +22,31 @@ class ICLightVideo:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "model": ("MODEL",),
+                "images": (imageOrLatent, {"tooltip": "Multiple Images"}),
+                "model": ("MODEL", {"tooltip": "IC-Light model"}),
                 "positive": ("CONDITIONING",),
                 "negative": ("CONDITIONING",),
                 "vae": ("VAE",),
                 "sampler": ("SAMPLER",),
                 "sigmas": ("SIGMAS",),
-                "images": (imageOrLatent,),
             },
             "optional": {
+                "latent_image": (
+                    "LATENT",
+                    {
+                        "tooltip": "Plug in a latent image for the sampler, otherwise an empty latent is used."
+                    },
+                ),
                 "opt_background": ("LATENT",),
                 "multiplier": (
                     "FLOAT",
-                    {"default": 0.18215, "min": 0.0, "max": 1.0, "step": 0.001},
+                    {
+                        "default": 0.18215,
+                        "min": 0.0,
+                        "max": 1.0,
+                        "step": 0.001,
+                        "tooltip": "Conditioning Multiplier",
+                    },
                 ),
                 "noise_seed": (
                     "INT",
@@ -43,6 +55,7 @@ class ICLightVideo:
                         "min": 0,
                         "max": 0xFFFFFFFFFFFFFFFF,
                         "control_after_generate": True,
+                        "tooltip": "Sampling Noise Seed",
                     },
                 ),
                 "cfg": (
@@ -53,6 +66,7 @@ class ICLightVideo:
                         "max": 100.0,
                         "step": 0.1,
                         "round": 0.01,
+                        "tooltip": "Sampling cfg",
                     },
                 ),
             },
@@ -64,17 +78,18 @@ class ICLightVideo:
     # OUTPUT_IS_LIST = (True,)
     FUNCTION = "main"
     CATEGORY = "IC-Light"
-    DESCRIPTION = """..."""
+    DESCRIPTION = """Applies IC-Light to each images of images input. Encodes, conditions, samples and decodes them.\nPlug in a latent image for the sampler, otherwise an empty latent is used."""
 
     def main(
         self,
+        images,  # torch.Tensor
         model,
         positive,
         negative,
         vae,
         sampler,
         sigmas,
-        images,  # torch.Tensor
+        latent_image=None,
         opt_background=None,
         multiplier=0.18215,
         noise_seed=0,
@@ -87,8 +102,8 @@ class ICLightVideo:
         logging.info("------------------")
 
         # * ENCODE
-        # ({"samples": tensor})
         try:
+            # ({"samples": tensor})
             encoded: tuple[dict[str, Any]] = VAEEncode.encode(self, vae, images)
         except Exception as e:
             logging.error(f"Error encoding images: {e}")
@@ -147,7 +162,7 @@ class ICLightVideo:
                     negative=conditioned_negative,
                     sampler=sampler,
                     sigmas=sigmas,
-                    latent_image=conditioned_samples,
+                    latent_image=latent_image if latent_image else conditioned_samples,
                 )
             except Exception as e:
                 logging.error(f"Error sampling conditioned image: {e}")
