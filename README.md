@@ -1,9 +1,15 @@
-# ComfyUI native implementation of IC-Light
+# IC-Light Video Node added to IC-Light
 
-Huge thanks to lllyasviel for yet more amazing models!
-Original repository: https://github.com/lllyasviel/IC-Light
+Expansion of kijais ComfyUI-IC-Light: https://github.com/kijai/ComfyUI-IC-Light
+
+I added one node: `IC-Light Video (Frame by Frame)`. It takes images (from a video for example) and applies IC-Light to each images. Internally it encodes, conditions, samples and decodes.
+It outputs the processed images, so you can combine them with a VideoCombine node for example (https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite).
+
+![video](https://github.com/Polygoningenieur/ComfyUI-IC-Light-Video/blob/main/example_workflows/video.png?raw=true)
 
 # Installation
+
+Only one IC-Light is needed, either this (with my custom node) or kijais original.
 
 Recommended way is to use the manager. There should be no extra requirements needed.
 Manual way is to clone this repo to the `ComfyUI/custom_nodes` -folder.

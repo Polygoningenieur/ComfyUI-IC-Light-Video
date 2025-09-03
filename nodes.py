@@ -242,22 +242,6 @@ class ICLightVideo:
         frames_out = torch.cat(decoded_batches, dim=0)
         return (frames_out,)
 
-    def encode(self, vae, pixels, per_batch):
-        t = []
-        pbar = ProgressBar(pixels.shape[0])
-        for start_idx in range(0, pixels.shape[0], per_batch):
-            try:
-                sub_pixels = vae.vae_encode_crop_pixels(
-                    pixels[start_idx : start_idx + per_batch]
-                )
-            except:
-                sub_pixels = VAEEncode.vae_encode_crop_pixels(
-                    pixels[start_idx : start_idx + per_batch]
-                )
-            t.append(vae.encode(sub_pixels[:, :, :, :3]))
-            pbar.update(per_batch)
-        return ({"samples": torch.cat(t, dim=0)},)
-
 
 class LoadAndApplyICLightUnet:
     @classmethod

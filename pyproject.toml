@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-ic-light-video"
-description = "ComfyUI native nodes for IC-Light"
-version = "1.0.5"
+description = "ComfyUI native nodes for IC-Light with a Video node"
+version = "0.0.9"
 license = { text = "Apache License 2.0" }
 dependencies = ["opencv-python"]
 
@@ -9,6 +9,6 @@ dependencies = ["opencv-python"]
 Repository = "https://github.com/Polygoningenieur/ComfyUI-IC-Light-Video"
 
 [tool.comfy]
-PublisherId = "kijai"
+PublisherId = "Polygoningenieur"
 DisplayName = "ComfyUI-IC-Light-Video"
 Icon = ""
