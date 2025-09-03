@@ -74,6 +74,10 @@ class ICLightVideo:
                         "tooltip": "Conditioning Multiplier",
                     },
                 ),
+                "add_noise": (
+                    "BOOLEAN",
+                    {"default": True, "tooltip": "Add noise to sampler."},
+                ),
                 "noise_seed": (
                     "INT",
                     {
@@ -100,11 +104,9 @@ class ICLightVideo:
 
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("images",)
-    # INPUT_IS_LIST = True
-    # OUTPUT_IS_LIST = (True,)
     FUNCTION = "main"
     CATEGORY = "IC-Light"
-    DESCRIPTION = """Applies IC-Light to each images of images input. Encodes, conditions, samples and decodes them.\n\nPlug in a latent image for the sampler, otherwise an empty latent is used.\n\nVersion: 0.0.8"""
+    DESCRIPTION = """Applies IC-Light to each images of images input. Encodes, conditions, samples and decodes them.\n\nPlug in a latent image for the sampler, otherwise an empty latent is used.\n\nVersion: 0.0.9"""
 
     def main(
         self,
@@ -121,10 +123,10 @@ class ICLightVideo:
         stop: int = 0,
         step: int = 1,
         multiplier=0.18215,
+        add_noise=True,
         noise_seed=0,
         cfg=8.0,
     ):
-        """..."""
 
         logging.info("------------------")
         logging.info("| IC-Light VIDEO |")
@@ -148,7 +150,7 @@ class ICLightVideo:
 
         if start >= total:
             return ([],)
-        
+
         images = images[start:stop:step].contiguous()
 
         # * ENCODE
@@ -205,7 +207,7 @@ class ICLightVideo:
                 (sampled_latent, sampled_denoised_latent) = SamplerCustom.sample(
                     self,
                     model=model,
-                    add_noise=True,
+                    add_noise=add_noise,
                     noise_seed=noise_seed,
                     cfg=cfg,
                     positive=conditioned_positive,
