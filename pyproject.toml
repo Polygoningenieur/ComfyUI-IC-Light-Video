@@ -9,6 +9,6 @@ dependencies = ["opencv-python"]
 Repository = "https://github.com/Polygoningenieur/ComfyUI-IC-Light-Video"
 
 [tool.comfy]
-PublisherId = "Polygoningenieur"
+PublisherId = "polygoningenieur"
 DisplayName = "ComfyUI-IC-Light-Video"
 Icon = ""
