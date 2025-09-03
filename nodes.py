@@ -6,8 +6,9 @@ import types
 import numpy as np
 import torch.nn.functional as F
 from typing import Any
-from comfy.utils import load_torch_file
-from nodes import VAEEncode
+from comfy.utils import load_torch_file, ProgressBar
+from nodes import VAEEncode, VAEDecode
+from comfy_extras.nodes_custom_sampler import SamplerCustom
 from .utils.convert_unet import convert_iclight_unet
 from .utils.image import generate_gradient_image, LightPosition
 from .utils.utils import imageOrLatent
@@ -21,17 +22,38 @@ class ICLightVideo:
     def INPUT_TYPES(s):
         return {
             "required": {
+                "model": ("MODEL",),
+                "positive": ("CONDITIONING",),
+                "negative": ("CONDITIONING",),
                 "vae": ("VAE",),
+                "sampler": ("SAMPLER",),
+                "sigmas": ("SIGMAS",),
                 "images": (imageOrLatent,),
             },
             "optional": {
-                "positive": ("CONDITIONING",),
-                "negative": ("CONDITIONING",),
-                "model": ("MODEL",),
-                "model_path": (folder_paths.get_filename_list("unet"),),
+                "opt_background": ("LATENT",),
                 "multiplier": (
                     "FLOAT",
                     {"default": 0.18215, "min": 0.0, "max": 1.0, "step": 0.001},
+                ),
+                "noise_seed": (
+                    "INT",
+                    {
+                        "default": 0,
+                        "min": 0,
+                        "max": 0xFFFFFFFFFFFFFFFF,
+                        "control_after_generate": True,
+                    },
+                ),
+                "cfg": (
+                    "FLOAT",
+                    {
+                        "default": 8.0,
+                        "min": 0.0,
+                        "max": 100.0,
+                        "step": 0.1,
+                        "round": 0.01,
+                    },
                 ),
             },
         }
@@ -46,13 +68,17 @@ class ICLightVideo:
 
     def main(
         self,
+        model,
+        positive,
+        negative,
         vae,
+        sampler,
+        sigmas,
         images,  # torch.Tensor
-        positive=None,
-        negative=None,
-        model=None,
-        model_path=None,
+        opt_background=None,
         multiplier=0.18215,
+        noise_seed=0,
+        cfg=8.0,
     ):
         """..."""
 
@@ -62,26 +88,111 @@ class ICLightVideo:
 
         logging.info(f"{len(images)} Images - {images.shape}")
 
+        # * ENCODE
         # ({"samples": tensor})
         try:
             encoded: tuple[dict[str, Any]] = VAEEncode.encode(self, vae, images)
         except Exception as e:
             logging.error(f"Error encoding images: {e}")
-            return ([], )
+            return ([],)
         logging.info(f"Encoded images.")
-        
+
         # samples is a tensor
         samples_tensor: Any = encoded[0].get("samples", None)
         if samples_tensor is None or samples_tensor.numel() == 0:
             logging.error(f"Could not get samples from encoded images.")
-            return ([], )
+            return ([],)
         logging.info(f"Image Samples: {samples_tensor.shape}")
 
-        for index, tensor in enumerate(samples_tensor):
-            # each image is a tensor
-            logging.info(f"Image {index}: {type(tensor)}")
+        decoded_batches = []
 
-        return (images,)
+        for index, latent in enumerate(samples_tensor):
+            # each image latent is a tensor
+            logging.info(f">>> Image {index} <<<")
+
+            # * CONDITIONING
+            conditioned_positive: list = None
+            conditioned_negative: list = None
+            conditioned_samples: dict[str, Any] = None  # {"samples": tensor}
+            try:
+                (conditioned_positive, conditioned_negative, conditioned_samples) = (
+                    ICLightConditioning.encode(
+                        self,
+                        positive=positive,
+                        negative=negative,
+                        vae=vae,
+                        # shape becomes (1, C, H, W)
+                        foreground={"samples": latent.unsqueeze(0)},
+                        multiplier=multiplier,
+                        opt_background=opt_background,
+                    )
+                )
+            except Exception as e:
+                logging.error(f"Error conditioning latent image: {e}")
+                continue
+            if None in [
+                conditioned_positive,
+                conditioned_negative,
+                conditioned_samples,
+            ]:
+                continue
+
+            # * SAMPLING
+            sampled_latent: dict[str, Any] = None  # {"samples": tensor}
+            sampled_denoised_latent: dict[str, Any] = None  # {"samples": tensor}
+            try:
+                (sampled_latent, sampled_denoised_latent) = SamplerCustom.sample(
+                    self,
+                    model=model,
+                    add_noise=True,
+                    noise_seed=noise_seed,
+                    cfg=cfg,
+                    positive=conditioned_positive,
+                    negative=conditioned_negative,
+                    sampler=sampler,
+                    sigmas=sigmas,
+                    latent_image=conditioned_samples,
+                )
+            except Exception as e:
+                logging.error(f"Error sampling conditioned image: {e}")
+                continue
+            if None in [sampled_latent, sampled_denoised_latent]:
+                continue
+
+            # decode sampled latent images -> tensor [B,H,W,C]
+            try:
+                decoded = vae.decode(sampled_latent.get("samples"))
+                # Flatten any extra batch/temporal dims to [N,H,W,C]
+                if hasattr(decoded, "shape") and len(decoded.shape) == 5:
+                    decoded = decoded.reshape(
+                        -1, decoded.shape[-3], decoded.shape[-2], decoded.shape[-1]
+                    )
+            except Exception as e:
+                logging.error(f"Error decoding sampled images: {e}")
+                continue
+            decoded_batches.append(decoded)
+
+        # Concatenate all frames into a single IMAGE tensor [N,H,W,C]
+        if len(decoded_batches) == 0:
+            return (images,)
+        frames_out = torch.cat(decoded_batches, dim=0)
+        return (frames_out,)
+
+    def encode(self, vae, pixels, per_batch):
+        t = []
+        pbar = ProgressBar(pixels.shape[0])
+        for start_idx in range(0, pixels.shape[0], per_batch):
+            try:
+                sub_pixels = vae.vae_encode_crop_pixels(
+                    pixels[start_idx : start_idx + per_batch]
+                )
+            except:
+                sub_pixels = VAEEncode.vae_encode_crop_pixels(
+                    pixels[start_idx : start_idx + per_batch]
+                )
+            t.append(vae.encode(sub_pixels[:, :, :, :3]))
+            pbar.update(per_batch)
+        return ({"samples": torch.cat(t, dim=0)},)
 
 
 class LoadAndApplyICLightUnet:
