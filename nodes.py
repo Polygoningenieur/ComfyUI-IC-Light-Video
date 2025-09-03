@@ -86,8 +86,6 @@ class ICLightVideo:
         logging.info("| IC-Light VIDEO |")
         logging.info("------------------")
 
-        logging.info(f"{len(images)} Images - {images.shape}")
-
         # * ENCODE
         # ({"samples": tensor})
         try:
@@ -95,20 +93,18 @@ class ICLightVideo:
         except Exception as e:
             logging.error(f"Error encoding images: {e}")
             return ([],)
-        logging.info(f"Encoded images.")
 
         # samples is a tensor
         samples_tensor: Any = encoded[0].get("samples", None)
         if samples_tensor is None or samples_tensor.numel() == 0:
             logging.error(f"Could not get samples from encoded images.")
             return ([],)
-        logging.info(f"Image Samples: {samples_tensor.shape}")
 
         decoded_batches = []
 
         for index, latent in enumerate(samples_tensor):
             # each image latent is a tensor
-            logging.info(f">>> Image {index} <<<")
+            logging.info(f"Frame {index + 1}/{len(images)}")
 
             # * CONDITIONING
             conditioned_positive: list = None
@@ -168,8 +164,9 @@ class ICLightVideo:
                         -1, decoded.shape[-3], decoded.shape[-2], decoded.shape[-1]
                     )
             except Exception as e:
-                logging.error(f"Error decoding sampled images: {e}")
+                logging.error(f"Error decoding sampled image: {e}")
                 continue
+
             decoded_batches.append(decoded)
 
         # Concatenate all frames into a single IMAGE tensor [N,H,W,C]
